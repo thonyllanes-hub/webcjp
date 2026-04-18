@@ -314,7 +314,7 @@ app.get('/scrape-status/:jobId', (req, res) => {
     res.json(job);
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Buscador Aislado corriendo en http://localhost:${PORT}`);
     console.log(`(Abre esa URL en tu Google Chrome para ver la interfaz y probar el sistema local)`);
