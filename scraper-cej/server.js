@@ -130,11 +130,34 @@ async function runScrape(expediente, parte) {
 
     try {
         const page = await browser.newPage();
+
+        // Simular un navegador normal para evitar bloqueos
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-PE,es;q=0.9,en;q=0.8' });
+
         await page.goto('https://cej.pj.gob.pe/cej/forms/busquedaform.html', { waitUntil: 'networkidle2', timeout: 90000 });
         
-        await page.waitForSelector('a[href="#tabs-2"]', { timeout: 60000 });
-        await page.click('a[href="#tabs-2"]');
-        await new Promise(r => setTimeout(r, 1000));
+        // Log de diagnóstico: ¿qué página ve el bot?
+        const pageTitle = await page.title();
+        const pageUrl = page.url();
+        console.log(`📄 Página cargada: "${pageTitle}" | URL: ${pageUrl}`);
+
+        // Esperar más tiempo a que el JS de pestañas cargue
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Intentar hacer clic en la pestaña de búsqueda por código
+        const tabExists = await page.$('a[href="#tabs-2"]');
+        if (tabExists) {
+            await page.click('a[href="#tabs-2"]');
+            console.log('✅ Pestaña de código encontrada y clickeada.');
+        } else {
+            // Si no existe la pestaña, tomar screenshot para diagnóstico
+            const screenshotB64 = await page.screenshot({ encoding: 'base64', fullPage: false });
+            console.log(`⚠️ Pestaña #tabs-2 no encontrada. HTML snippet: ${(await page.content()).substring(0, 500)}`);
+            throw new Error(`Geo-bloqueo o cambio en la web del CEJ. Título de página recibida: "${pageTitle}" | URL: ${pageUrl}`);
+        }
+        
+        await new Promise(r => setTimeout(r, 1500));
 
         await page.type('#cod_expediente', p1);
         await page.type('#cod_anio', p2);
