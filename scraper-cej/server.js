@@ -124,12 +124,27 @@ async function runScrape(expediente, parte) {
     const browser = await puppeteer.launch({ 
         headless: true, 
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            // Proxy residencial para evitar el bloqueo Radware/geo-IP del Poder Judicial
+            ...(process.env.PROXY_SERVER ? [`--proxy-server=${process.env.PROXY_SERVER}`] : [])
+        ],
         defaultViewport: null 
     });
 
     try {
         const page = await browser.newPage();
+
+        // Autenticar proxy si está configurado
+        if (process.env.PROXY_USER && process.env.PROXY_PASS) {
+            await page.authenticate({
+                username: process.env.PROXY_USER,
+                password: process.env.PROXY_PASS
+            });
+            console.log('🔐 Proxy residencial activado.');
+        }
 
         // Simular un navegador normal para evitar bloqueos
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
