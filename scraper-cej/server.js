@@ -128,6 +128,9 @@ async function runScrape(expediente, parte) {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
+            '--ignore-certificate-errors',        // Evita errores SSL con proxies
+            '--ignore-ssl-errors',
+            '--disable-web-security',
             // Proxy residencial para evitar el bloqueo Radware/geo-IP del Poder Judicial
             ...(process.env.PROXY_SERVER ? [`--proxy-server=${process.env.PROXY_SERVER}`] : [])
         ],
