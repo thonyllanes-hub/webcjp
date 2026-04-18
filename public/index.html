@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador CEJ (Aislado)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; } </style>
+</head>
+<body class="p-8">
+    <div class="max-w-4xl mx-auto space-y-6">
+        <!-- Tarjeta de Búsqueda -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h2 class="text-2xl font-black text-gray-800 mb-6 flex items-center gap-2">
+                <span class="bg-blue-600 text-white p-2 rounded-lg"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></span>
+                Buscador CEJ (Entorno de Pruebas)
+            </h2>
+            
+            <form id="searchForm" class="flex flex-col md:flex-row gap-4">
+                <div class="flex-1">
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Número de Expediente</label>
+                    <input type="text" id="expediente" value="01180-2026-0-3204-JP-FC-02" class="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-medium transition" required placeholder="Ej: 01180-2026-0-3204-JP-FC-02">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Nombre Involucrado (Parte)</label>
+                    <input type="text" id="parte" value="ARIANA HOYOS TEJEDA" class="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-medium transition" required placeholder="Ej: JUAN PEREZ">
+                </div>
+                <div class="flex items-end">
+                    <button type="submit" id="btnSubmit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl transition flex items-center justify-center min-w-[140px]">
+                        Consultar
+                    </button>
+                </div>
+            </form>
+            
+            <div id="loader" class="hidden mt-6 bg-blue-50 text-blue-700 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
+                <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span class="font-medium">Robot trabajando... Extrayendo datos del Poder Judicial (Esto puede tomar hasta 15-30 segundos).</span>
+            </div>
+        </div>
+
+        <!-- Tarjeta de Resultados -->
+        <div id="results" class="hidden space-y-6">
+            
+            <!-- GENERAL -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-[#f0f4f8] border-b border-gray-200 px-4 py-2">
+                    <h3 class="font-bold text-[#0d47a1] text-sm">General</h3>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-xs">
+                    <div class="grid grid-cols-3 gap-2">
+                        <span class="font-semibold text-gray-700">Fecha de inicio</span>
+                        <span class="col-span-2 text-gray-600" id="resFechaInicio"></span>
+                        
+                        <span class="font-semibold text-gray-700">Especialidad</span>
+                        <span class="col-span-2 text-gray-600" id="resEspecialidad"></span>
+                        
+                        <span class="font-semibold text-gray-700">Fecha de notificación</span>
+                        <span class="col-span-2 text-gray-600"></span>
+                        
+                        <span class="font-semibold text-gray-700 text-[#0d47a1]">Caso principal</span>
+                        <span class="col-span-2 text-[#0d47a1] font-bold">🔍</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <span class="font-semibold text-gray-700">Fecha de conclusión</span>
+                        <span class="col-span-2 text-gray-600" id="resFechaConclusion"></span>
+                        
+                        <span class="font-semibold text-gray-700">Materia</span>
+                        <span class="col-span-2 text-gray-600" id="resMateria"></span>
+                        
+                        <span class="font-semibold text-gray-700">Parte patrocinada</span>
+                        <span class="col-span-2 text-gray-600 uppercase">DEMANDANTE</span>
+                        
+                        <span class="font-semibold text-gray-700">Casos relacionados</span>
+                        <span class="col-span-2 text-[#0d47a1]">◉</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DATOS EN LA ENTIDAD -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-[#f0f4f8] border-b border-gray-200 px-4 py-2">
+                    <h3 class="font-bold text-[#0d47a1] text-sm">Datos en la entidad</h3>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-xs">
+                    <div class="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <span class="font-semibold text-gray-700">Distrito judicial o ámbito</span>
+                        <span class="text-gray-600 uppercase" id="resDistrito"></span>
+                        
+                        <span class="font-semibold text-gray-700">Procedencia</span>
+                        <span class="text-gray-600 uppercase"></span>
+                        
+                        <span class="font-semibold text-gray-700">Motivo de Ingreso</span>
+                        <span class="text-gray-600 uppercase" id="resMotivoIngreso"></span>
+                        
+                        <span class="font-semibold text-gray-700">Especialista/Secretario</span>
+                        <span class="text-gray-600 uppercase" id="resEspecialista"></span>
+                        
+                        <span class="font-semibold text-gray-700">Etapa procesal</span>
+                        <span class="text-gray-600 uppercase" id="resEtapaProcesal"></span>
+
+                        <span class="font-semibold text-gray-700">Observación</span>
+                        <span class="text-gray-600 uppercase" id="resObservacion"></span>
+                    </div>
+                    <div class="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <span class="font-semibold text-gray-700">Órgano Jurisdiccional</span>
+                        <span class="text-gray-600 uppercase" id="resJuzgado"></span>
+                        
+                        <span class="font-semibold text-gray-700">Proceso</span>
+                        <span class="text-gray-600 uppercase" id="resProceso"></span>
+                        
+                        <span class="font-semibold text-gray-700">Ubicación</span>
+                        <span class="text-gray-600 uppercase" id="resUbicacion"></span>
+                        
+                        <span class="font-semibold text-gray-700">Estado</span>
+                        <span class="text-gray-600 uppercase font-bold" id="resEstado"></span>
+                        
+                        <span class="font-semibold text-gray-700">Sumilla</span>
+                        <span class="text-gray-600 uppercase" id="resSumilla"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DATOS JUDICIALES Y JUEZ -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-[#f0f4f8] border-b border-gray-200 px-4 py-2">
+                    <h3 class="font-bold text-[#0d47a1] text-sm">Datos judiciales, fiscalía y policía</h3>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-xs">
+                    <div class="grid grid-cols-[1fr_2fr] gap-2">
+                        <span class="font-semibold text-gray-700">Juez</span>
+                        <span class="text-gray-600 uppercase" id="resJuez"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PARTES PROCESALES -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-[#f0f4f8] border-b border-gray-200 px-4 py-2 flex items-center gap-2">
+                    <h3 class="font-bold text-[#0d47a1] text-sm">Partes procesales</h3>
+                    <span class="bg-gray-300 text-gray-700 rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold">2</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs text-left">
+                        <thead class="bg-gray-100 border-b border-gray-200 text-gray-600 font-semibold">
+                            <tr>
+                                <th class="px-4 py-2">Tipo de parte</th>
+                                <th class="px-4 py-2">Nombre o Razón social</th>
+                                <th class="px-4 py-2">Comentario</th>
+                                <th class="px-4 py-2 text-center">Patrocinado?</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200" id="resPartes">
+                            <!-- Filled by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- REGISTRO DE ACTIVIDAD (Timeline) -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-200 text-center">
+                    <h3 class="font-bold text-[#0d47a1] text-sm flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Registro de actividad
+                    </h3>
+                </div>
+                <div class="bg-gray-100 p-4" id="resMovimientos">
+                    <!-- Iterated via JS -->
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        document.getElementById('searchForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btnSubmit');
+            const loader = document.getElementById('loader');
+            const results = document.getElementById('results');
+            
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            loader.classList.remove('hidden');
+            results.classList.add('hidden');
+
+            const payload = {
+                expediente: document.getElementById('expediente').value,
+                parte: document.getElementById('parte').value
+            };
+
+            try {
+                const response = await fetch('http://localhost:3000/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if(!response.ok) {
+                    alert('Error en Scraping: ' + (data.error || 'Desconocido'));
+                } else {
+                    // Mapeo General y Entidad
+                    document.getElementById('resFechaInicio').textContent = data.fecha_inicio || '--';
+                    document.getElementById('resEspecialidad').textContent = data.especialidad || '--';
+                    document.getElementById('resMateria').textContent = data.materia || '--';
+                    
+                    document.getElementById('resDistrito').textContent = data.distrito_judicial || '--';
+                    document.getElementById('resMotivoIngreso').textContent = data.motivo_conclusion || '--'; // a veces motivo ingreso
+                    document.getElementById('resEspecialista').textContent = data.especialista_legal || '--';
+                    document.getElementById('resEtapaProcesal').textContent = data.etapa_procesal || '--';
+                    document.getElementById('resObservacion').textContent = data.observacion || '--';
+                    
+                    document.getElementById('resJuzgado').textContent = data.organo_jurisdiccional || '--';
+                    document.getElementById('resProceso').textContent = data.proceso || '--';
+                    document.getElementById('resUbicacion').textContent = data.ubicacion || '--';
+                    document.getElementById('resEstado').textContent = data.estado || '--';
+                    document.getElementById('resSumilla').textContent = data.sumilla || '--';
+                    document.getElementById('resJuez').textContent = data.juez || '--';
+
+                    // Llenar partes procesales
+                    const partesHtml = `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-2 border-r border-gray-100">DEMANDADO</td>
+                            <td class="px-4 py-2 border-r border-gray-100 text-[#0d47a1]">📄 ${data.demandado || 'No detectado'}</td>
+                            <td class="px-4 py-2 border-r border-gray-100"></td>
+                            <td class="px-4 py-2 text-center text-gray-400">○</td>
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-2 border-r border-gray-100">DEMANDANTE</td>
+                            <td class="px-4 py-2 border-r border-gray-100 text-[#0d47a1]">📄 ${data.demandante || 'No detectado'}</td>
+                            <td class="px-4 py-2 border-r border-gray-100"></td>
+                            <td class="px-4 py-2 text-center text-gray-800">●</td>
+                        </tr>
+                    `;
+                    document.getElementById('resPartes').innerHTML = partesHtml;
+
+                    // Llenar movimientos (Registro de actividad)
+                    const movsTbody = document.getElementById('resMovimientos');
+                    movsTbody.innerHTML = '';
+                    
+                    if(data.movimientos && data.movimientos.length > 0) {
+                        data.movimientos.forEach(m => {
+                            movsTbody.innerHTML += `
+                                <div class="bg-white border-b border-gray-200 p-3 mb-1 shadow-sm rounded-sm">
+                                    <div class="text-[11px] text-gray-800 font-bold mb-1">CEJ Automático, ${m.fecha_resolucion || ''}</div>
+                                    <div class="text-[11px] text-gray-600 uppercase">${m.acto || m.resolucion} - ${m.sumilla || 'SIN DETALLES'}</div>
+                                    <div class="text-[10px] text-gray-400 mt-1">Nuevos actos: 1</div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        movsTbody.innerHTML = `<div class="p-3 text-center text-xs">No hay actividad para mostrar.</div>`;
+                    }
+
+                    results.classList.remove('hidden');
+                }
+            } catch (error) {
+                alert('No se pudo conectar con el motor Scraper local.');
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+                loader.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
