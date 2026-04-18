@@ -224,17 +224,39 @@ async function runScrape(expediente, parte) {
 
         await page.type('#codigoCaptcha', ocrText);
         await page.click('#consultarExpedientes');
-        await new Promise(r => setTimeout(r, 5000)); 
+        
+        // Esperar más tiempo a que cargue la página de resultados
+        await new Promise(r => setTimeout(r, 8000));
 
-        const divMensaje = await page.$('#mensaje'); 
+        // Screenshot de diagnóstico para ver qué tiene la página después del submit
+        const screenshotAfterSubmit = await page.screenshot({ encoding: 'base64', fullPage: false });
+        const htmlAfterSubmit = await page.content();
+        const snippetAfterSubmit = htmlAfterSubmit.substring(0, 800);
+        console.log('📸 HTML tras submit (primeros 800 chars):', snippetAfterSubmit);
+
+        // Verificar si el captcha fue rechazado o hay mensaje de error
+        const divMensaje = await page.$('#mensaje');
         if (divMensaje) {
-             const textoMsj = await page.evaluate(el => el.textContent, divMensaje);
-             if (textoMsj && textoMsj.trim() !== '') throw new Error('CEJ: ' + textoMsj.trim());
+            const textoMsj = await page.evaluate(el => el.innerText, divMensaje);
+            const textoLimpio = textoMsj ? textoMsj.trim() : '';
+            console.log('📢 Mensaje CEJ:', textoLimpio);
+            if (textoLimpio !== '') throw new Error('CEJ respondió: ' + textoLimpio);
         }
 
-        const detailsBtn = await page.waitForSelector('button[title="Ver detalle de expediente"]', { timeout: 10000 });
+        // Verificar si el botón de detalle está disponible (aumentamos timeout a 20s)
+        let detailsBtn;
+        try {
+            detailsBtn = await page.waitForSelector('button[title="Ver detalle de expediente"]', { timeout: 20000 });
+        } catch(e) {
+            // Tomar screenshot del estado actual para diagnóstico
+            const htmlActual = await page.content();
+            console.log('⚠️ Botón no encontrado. URL actual:', page.url());
+            console.log('⚠️ HTML actual (primeros 1000):', htmlActual.substring(0, 1000));
+            throw new Error('No se encontraron resultados para ese expediente/parte. Verifique los datos e intente de nuevo.');
+        }
+
         await detailsBtn.click();
-        await new Promise(r => setTimeout(r, 5000));
+        await new Promise(r => setTimeout(r, 7000));
 
         const finalHtml = await page.content();
         const jsonResult = parseCEJHtml(finalHtml);
