@@ -122,7 +122,12 @@ app.post('/scrape', async (req, res) => {
 
     let browser;
     try {
-        browser = await puppeteer.launch({ headless: false, defaultViewport: null });
+        browser = await puppeteer.launch({ 
+            headless: true, 
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            defaultViewport: null 
+        });
         const page = await browser.newPage();
         await page.goto('https://cej.pj.gob.pe/cej/forms/busquedaform.html', { waitUntil: 'networkidle2' });
         
@@ -139,45 +144,49 @@ app.post('/scrape', async (req, res) => {
         await page.type('#cod_instancia', p7);
         await page.type('#parte', parte);
 
-        // Captcha CEJ Solución Automática con 2Captcha
         await new Promise(r => setTimeout(r, 800)); // Esperar que se dibuje
         
         console.log('\n=============================================');
-        console.log('🤖 ENVIANDO CAPTCHAS A 2CAPTCHA...');
+        console.log('🤖 ENVIANDO IMAGEN CAPTCHA A 2CAPTCHA...');
         console.log('=============================================\n');
 
-        // Solve image catchas/recaptchas automatically
-        const { captchas, solutions, error } = await page.solveRecaptchas();
+        // Intentar resolver reCaptcha oculto si lo hay
+        await page.solveRecaptchas();
         
-        if (error) {
-            console.log('❌ Error resolviendo reCaptchas:', error);
-        }
-
-        // Si hay una imagen con ID codigoCaptcha que no es reCaptcha tradicional,
-        // a veces hay que extraerlo y enviarlo.
-        // Pero resolveRecaptchas de puppeteer-extra intercepta reCaptcha/hCaptcha.
-        // Para el Captcha NORMAL de texto de la CEJ:
-        // puppeteer-extra-plugin-recaptcha no resuelve esto automáticamente si no lo marcamos.
-        
-        // Dejaremos el failsafe manual SOLO en caso 2captcha esté sin saldo para el login
-        console.log('Verificando si se requiere input adicional...');
-        
-        // --- PARA LA IMAGEN ALFANUMÉRICA CEJ ---
-        // (El plugin recaptcha resuelve el "Soy Humano". El código de la imagen hay que mandarlo a 2captcha manualmente o vía tesseract si no hay saldo)
-        // NOTA: Para no romper el demo actual en caso de saldo 0, reactivo readline fallback.
-        
+        // El CEJ requiere un captcha de imagen. Lo extraemos en base64
         const captchaEl = await page.waitForSelector('#captcha_image');
         await page.evaluate((el) => el.scrollIntoView(), captchaEl);
         await new Promise(r => setTimeout(r, 500)); 
-        await captchaEl.screenshot({ path: 'captcha_bot.png' });
+        const base64Img = await captchaEl.screenshot({ encoding: 'base64' });
 
-        const readline = require('readline').createInterface({ input: process.stdin, output: process.stdout });
-        const ocrText = await new Promise(resolve => {
-            readline.question('=> Escribe el captcha de la imagen CEJ: ', ans => {
-                readline.close();
-                resolve(ans.trim().toUpperCase());
-            });
+        // Enviar vía API manual de 2Captcha
+        const axios = require('axios');
+        let ocrText = '';
+        
+        const apiKey2c = 'ced1a53af6a1742a33328af4d12e3b20';
+        
+        const r1 = await axios.post('http://2captcha.com/in.php', {
+           key: apiKey2c, method: 'base64', body: base64Img, json: 1
         });
+        
+        if (r1.data.status === 1) {
+            const reqId = r1.data.request;
+            console.log('⌛ Esperando respuesta de 2captcha (ID: ' + reqId + ')...');
+            for(let i=0; i<15; i++) {
+                await new Promise(r => setTimeout(r, 4000));
+                const r2 = await axios.get(`http://2captcha.com/res.php?key=${apiKey2c}&action=get&id=${reqId}&json=1`);
+                if(r2.data.status === 1) { 
+                    ocrText = r2.data.request.toUpperCase(); 
+                    console.log('✅ Solucionado: ' + ocrText);
+                    break; 
+                }
+            }
+        } else {
+            console.log("❌ Error 2captcha: ", r1.data);
+            throw new Error('Servicio 2Captcha sin saldo o fallido');
+        }
+
+        if (!ocrText) throw new Error('No se pudo resolver el Captcha en el tiempo esperado');
 
         await page.type('#codigoCaptcha', ocrText);
         await page.click('#consultarExpedientes');
