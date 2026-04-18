@@ -112,24 +112,25 @@ function parseCEJHtml(html) {
     return expedienteObj;
 }
 
-app.post('/scrape', async (req, res) => {
-    const { expediente, parte } = req.body;
-    if(!expediente || !parte) return res.status(400).json({error: 'Faltan datos'});
+// ── Almacén en memoria de jobs asíncronos ──────────────────────────────────
+const jobs = {}; // { jobId: { status: 'pending'|'done'|'error', result, error } }
 
+// Función central de scraping (reutilizable)
+async function runScrape(expediente, parte) {
     const parts = expediente.split('-');
-    if (parts.length !== 7) return res.status(400).json({error: 'Formato inválido'});
+    if (parts.length !== 7) throw new Error('Formato inválido. Deben ser 7 segmentos separados por guión.');
     const [p1, p2, p3, p4, p5, p6, p7] = parts;
 
-    let browser;
+    const browser = await puppeteer.launch({ 
+        headless: true, 
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        defaultViewport: null 
+    });
+
     try {
-        browser = await puppeteer.launch({ 
-            headless: true, 
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-            defaultViewport: null 
-        });
         const page = await browser.newPage();
-        await page.goto('https://cej.pj.gob.pe/cej/forms/busquedaform.html', { waitUntil: 'networkidle2' });
+        await page.goto('https://cej.pj.gob.pe/cej/forms/busquedaform.html', { waitUntil: 'networkidle2', timeout: 90000 });
         
         await page.waitForSelector('a[href="#tabs-2"]', { timeout: 60000 });
         await page.click('a[href="#tabs-2"]');
@@ -143,26 +144,21 @@ app.post('/scrape', async (req, res) => {
         await page.type('#cod_especialidad', p6);
         await page.type('#cod_instancia', p7);
         await page.type('#parte', parte);
-
-        await new Promise(r => setTimeout(r, 800)); // Esperar que se dibuje
+        await new Promise(r => setTimeout(r, 800));
         
         console.log('\n=============================================');
         console.log('🤖 ENVIANDO IMAGEN CAPTCHA A 2CAPTCHA...');
         console.log('=============================================\n');
 
-        // Intentar resolver reCaptcha oculto si lo hay
         await page.solveRecaptchas();
         
-        // El CEJ requiere un captcha de imagen. Lo extraemos en base64
         const captchaEl = await page.waitForSelector('#captcha_image');
         await page.evaluate((el) => el.scrollIntoView(), captchaEl);
         await new Promise(r => setTimeout(r, 500)); 
         const base64Img = await captchaEl.screenshot({ encoding: 'base64' });
 
-        // Enviar vía API manual de 2Captcha
         const axios = require('axios');
         let ocrText = '';
-        
         const apiKey2c = 'ced1a53af6a1742a33328af4d12e3b20';
         
         const r1 = await axios.post('http://2captcha.com/in.php', {
@@ -172,7 +168,7 @@ app.post('/scrape', async (req, res) => {
         if (r1.data.status === 1) {
             const reqId = r1.data.request;
             console.log('⌛ Esperando respuesta de 2captcha (ID: ' + reqId + ')...');
-            for(let i=0; i<15; i++) {
+            for(let i=0; i<20; i++) {
                 await new Promise(r => setTimeout(r, 4000));
                 const r2 = await axios.get(`http://2captcha.com/res.php?key=${apiKey2c}&action=get&id=${reqId}&json=1`);
                 if(r2.data.status === 1) { 
@@ -190,13 +186,12 @@ app.post('/scrape', async (req, res) => {
 
         await page.type('#codigoCaptcha', ocrText);
         await page.click('#consultarExpedientes');
-        
         await new Promise(r => setTimeout(r, 5000)); 
 
         const divMensaje = await page.$('#mensaje'); 
         if (divMensaje) {
              const textoMsj = await page.evaluate(el => el.textContent, divMensaje);
-             if (textoMsj && textoMsj.trim() !== '') throw new Error('CEJ Bot: ' + textoMsj.trim());
+             if (textoMsj && textoMsj.trim() !== '') throw new Error('CEJ: ' + textoMsj.trim());
         }
 
         const detailsBtn = await page.waitForSelector('button[title="Ver detalle de expediente"]', { timeout: 10000 });
@@ -207,11 +202,53 @@ app.post('/scrape', async (req, res) => {
         const jsonResult = parseCEJHtml(finalHtml);
 
         await browser.close();
-        res.json(jsonResult);
-    } catch (error) {
-        if(browser) await browser.close();
-        res.status(500).json({ error: error.message });
+        return jsonResult;
+    } catch(e) {
+        await browser.close();
+        throw e;
     }
+}
+
+// ── POST /scrape-async — Inicia job y devuelve jobId inmediatamente ─────────
+app.post('/scrape-async', (req, res) => {
+    const { expediente, parte } = req.body;
+    if(!expediente || !parte) return res.status(400).json({ error: 'Faltan datos' });
+
+    // Generar ID único de job
+    const jobId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    jobs[jobId] = { status: 'pending' };
+
+    // Limpiar jobs viejos (más de 30 min) para no saturar la memoria
+    const ahora = Date.now();
+    Object.keys(jobs).forEach(id => {
+        if (jobs[id].createdAt && (ahora - jobs[id].createdAt) > 1800000) delete jobs[id];
+    });
+    jobs[jobId].createdAt = ahora;
+
+    console.log(`🚀 Job ${jobId} iniciado para expediente: ${expediente}`);
+
+    // Ejecutar en background sin bloquear la respuesta
+    runScrape(expediente, parte)
+        .then(result => {
+            jobs[jobId].status = 'done';
+            jobs[jobId].result = result;
+            console.log(`✅ Job ${jobId} completado.`);
+        })
+        .catch(err => {
+            jobs[jobId].status = 'error';
+            jobs[jobId].error = err.message;
+            console.log(`❌ Job ${jobId} falló: ${err.message}`);
+        });
+
+    // Responder inmediatamente con el jobId (en menos de 1 segundo)
+    res.json({ jobId, status: 'pending' });
+});
+
+// ── GET /scrape-status/:jobId — Consulta estado del job ────────────────────
+app.get('/scrape-status/:jobId', (req, res) => {
+    const job = jobs[req.params.jobId];
+    if (!job) return res.status(404).json({ error: 'Job no encontrado o expirado' });
+    res.json(job);
 });
 
 const PORT = 3000;
